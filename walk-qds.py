@@ -14,14 +14,16 @@
 
 import argparse
 import collections
-import re
 import os
+import re
 import sys
 
 import lxml.etree
 
 
 class Package:
+    """Class to represent one package in the hierarchy of packages."""
+
     __slots__ = ('name', 'qd_path', 'lxml_tree', 'depth', 'children')
 
     def __init__(self, name, qd_path, lxml_tree):
@@ -34,10 +36,24 @@ class Package:
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--recurse', help='Whether to recursively find QDs for all dependencies', action='store_true', default=False)
-    parser.add_argument('--exclude', help='Package to specifically exclude from quality-level checking (may be passed more than once)', action='append', default=[])
-    parser.add_argument('source_path', help='The top-level of the source tree in which to find package and dependencies', action='store')
-    parser.add_argument('package', help='The top-level package for which to find Quality level of dependencies', action='store')
+    parser.add_argument(
+        '--recurse',
+        help='Whether to recursively find QDs for all dependencies',
+        action='store_true',
+        default=False)
+    parser.add_argument(
+        '--exclude',
+        help='Package to specifically exclude from quality-level checking (may be passed more than once)',
+        action='append',
+        default=[])
+    parser.add_argument(
+        'source_path',
+        help='The top-level of the source tree in which to find package and dependencies',
+        action='store')
+    parser.add_argument(
+        'package',
+        help='The top-level package for which to find quality level of dependencies',
+        action='store')
     args = parser.parse_args()
 
     source_path = args.source_path
@@ -57,21 +73,28 @@ def main():
 
     package_name_to_package = {}
     for (dirpath, dirnames, filenames) in os.walk(source_path):
-        if 'package.xml' in filenames:
-            tree = lxml.etree.parse(os.path.join(dirpath, 'package.xml'))
-            for child in tree.getroot().getchildren():
-                if child.tag == 'name':
-                    package_name_to_package[child.text] = Package(child.text, os.path.join(dirpath, 'QUALITY_DECLARATION.md'), tree)
-                    break
+        if 'package.xml' not in filenames:
+            continue
 
-    if not package_name_to_examine in package_name_to_package:
+        tree = lxml.etree.parse(os.path.join(dirpath, 'package.xml'))
+        for child in tree.getroot().getchildren():
+            if child.tag != 'name':
+                continue
+
+            package_name_to_package[child.text] = Package(
+                child.text,
+                os.path.join(dirpath, 'QUALITY_DECLARATION.md'),
+                tree)
+            break
+
+    if package_name_to_examine not in package_name_to_package:
         print("Could not find package to examine '%s'" % (package_name_to_examine))
         return 2
 
     # Starting with the package given by the user on the command-line, walk the
     # package dependencies in a breadth-first manner.  We want breadth-first so
-    # that if a dependency shows up on more than one "level", we'll only show it
-    # at the highest level it is a dependency at.
+    # that if a dependency shows up on more than one "level", we'll only show
+    # it at the highest level it is a dependency at.
 
     packages_to_examine = collections.deque([package_name_to_examine])
     depnames_found = [package_name_to_examine]
@@ -92,22 +115,22 @@ def main():
             depnames_found.append(depname)
 
             if depname in package_name_to_package:
-                package_name_to_package[depname].depth = package_name_to_package[package.name].depth + 1
-                package_name_to_package[package.name].children.append(package_name_to_package[depname])
+                package_name_to_package[depname].depth = package.depth + 1
+                package.children.append(package_name_to_package[depname])
                 if args.recurse:
                     packages_to_examine.append(depname)
             else:
                 deps_not_found.add(depname)
 
     if deps_not_found:
-        print("WARNING: Could not find packages '%s', not recursing" % (', '.join(deps_not_found)))
+        print("WARNING: Could not find dependencies '%s', skipping" % (', '.join(deps_not_found)))
 
-    quality_level_re = re.compile('.*claims to be in the \*\*Quality Level ([1-5])\*\*')
+    quality_level_re = re.compile(r'.*claims to be in the \*\*Quality Level ([1-5])\*\*')
 
     # Now start walking in a depth-first search, starting from the top element,
     # figuring out the quality levels as we go.  Note that we don't do the
-    # printing here, just so that we collect all of the WARNINGS before we print
-    # out the entire tree.
+    # printing here, just so that we collect all of the WARNINGS before we
+    # print out the entire tree.
     deps_to_print = collections.deque([package_name_to_package[package_name_to_examine]])
     strings_to_print = []
     while deps_to_print:
