@@ -43,6 +43,10 @@ def main():
     source_path = args.source_path
     package_name_to_examine = args.package
 
+    if package_name_to_examine in args.exclude:
+        print("Package name '%s' must not be in the exclude list" % (package_name_to_examine))
+        return 1
+
     # Walk the entire source_path passed in by the user, looking for all of the
     # package.xml files.  For each of them we parse the package.xml, and go
     # looking for the name of the package.  We then save that off, along with
@@ -74,7 +78,6 @@ def main():
     deps_not_found = set()
     while packages_to_examine:
         package = package_name_to_package[packages_to_examine.popleft()]
-        deps = []
         for child in package.lxml_tree.getroot().getchildren():
             if child.tag not in ['depend', 'build_depend']:
                 continue
@@ -127,10 +130,10 @@ def main():
 
         deps_to_print.extendleft(package.children)
 
-    for s in strings_to_print:
-        print(s)
+    [print(s) for s in strings_to_print]
 
     return 0
+
 
 if __name__ == '__main__':
     sys.exit(main())
