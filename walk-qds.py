@@ -7,23 +7,19 @@ import sys
 import lxml.etree
 
 
-class QD:
-    __slots__ = ('package', 'depth', 'children', 'quality_level')
-
-    def __init__(self, package, depth):
-        self.package = package
-        self.depth = depth
-        self.children = []
-        self.quality_level = 5
-
-
 class Package:
-    __slots__ = ('name', 'qd_path', 'lxml_tree')
+    __slots__ = ('name', 'qd_path', 'lxml_tree', 'depth', 'children', 'quality_level')
 
     def __init__(self, name, qd_path, lxml_tree):
         self.name = name
         self.qd_path = qd_path
         self.lxml_tree = lxml_tree
+        self.depth = 0
+        self.children = []
+        self.quality_level = 5
+
+    def __eq__(self, other):
+        return self.name == other.name
 
 
 def main():
@@ -54,7 +50,7 @@ def main():
 
     packages_to_examine = collections.deque([package_to_examine])
     deps_found = collections.OrderedDict()
-    deps_found[package_to_examine] = QD(package_name_to_package[package_to_examine], 0)
+    deps_found[package_to_examine] = package_name_to_package[package_to_examine]
     deps_not_found = set()
     while packages_to_examine:
         package = package_name_to_package[packages_to_examine.popleft()]
@@ -68,10 +64,10 @@ def main():
                 continue
 
             if dep in package_name_to_package:
-                qd = QD(package_name_to_package[dep], deps_found[package.name].depth + 1)
-                deps_found[dep] = qd
+                package_name_to_package[dep].depth = package_name_to_package[package.name].depth + 1
+                deps_found[dep] = package_name_to_package[dep]
                 if args.recurse:
-                    deps_found[package.name].children.append(qd)
+                    deps_found[package.name].children.append(package_name_to_package[dep])
                     packages_to_examine.append(dep)
             else:
                 deps_not_found.add(dep)
@@ -80,11 +76,11 @@ def main():
         print("WARNING: Could not find packages '%s', not recursing" % (', '.join(deps_not_found)))
 
     quality_level_re = re.compile('.*claims to be in the \*\*Quality Level ([1-5])\*\*')
-    for dep,qd in deps_found.items():
-        if not os.path.exists(qd.package.qd_path):
+    for dep,package in deps_found.items():
+        if not os.path.exists(package.qd_path):
             print("WARNING: Could not find quality declaration for package '%s', skipping" % (package.name))
             continue
-        with open(qd.package.qd_path, 'r') as infp:
+        with open(package.qd_path, 'r') as infp:
             for line in infp:
                 match = re.match(quality_level_re, line)
                 if match is None:
@@ -92,10 +88,10 @@ def main():
                 groups = match.groups()
                 if len(groups) != 1:
                     continue
-                qd.quality_level = int(groups[0])
+                package.quality_level = int(groups[0])
 
-    for dep,qd in deps_found.items():
-        print('%s%s: %d' % ('  ' * qd.depth, dep, qd.quality_level))
+    for dep,package in deps_found.items():
+        print('%s%s: %d' % ('  ' * package.depth, dep, package.quality_level))
 
     return 0
 
