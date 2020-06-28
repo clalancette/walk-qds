@@ -30,7 +30,7 @@ def main():
     args = parser.parse_args()
 
     source_path = args.source_path
-    package_to_examine = args.package
+    package_name_to_examine = args.package
 
     # First we walk the source repository, finding all of the packages and
     # storing their relative paths.  This saves us from having to do multiple
@@ -44,33 +44,31 @@ def main():
                     package_name_to_package[child.text] = Package(child.text, os.path.join(dirpath, 'QUALITY_DECLARATION.md'), tree)
                     break
 
-    if not package_to_examine in package_name_to_package:
-        print("Could not find package to examine '%s'" % (package_to_examine))
+    if not package_name_to_examine in package_name_to_package:
+        print("Could not find package to examine '%s'" % (package_name_to_examine))
         return 2
 
-    packages_to_examine = collections.deque([package_to_examine])
+    packages_to_examine = collections.deque([package_name_to_examine])
     deps_found = collections.OrderedDict()
-    deps_found[package_to_examine] = package_name_to_package[package_to_examine]
+    deps_found[package_name_to_examine] = package_name_to_package[package_name_to_examine]
     deps_not_found = set()
     while packages_to_examine:
         package = package_name_to_package[packages_to_examine.popleft()]
         deps = []
         for child in package.lxml_tree.getroot().getchildren():
-            if child.tag in ['depend', 'build_depend']:
-                deps.append(child.text)
-
-        for dep in deps:
-            if dep in deps_found:
+            if child.tag not in ['depend', 'build_depend']:
                 continue
 
-            if dep in package_name_to_package:
-                package_name_to_package[dep].depth = package_name_to_package[package.name].depth + 1
-                deps_found[dep] = package_name_to_package[dep]
+            depname = child.text
+
+            if depname in package_name_to_package:
+                package_name_to_package[depname].depth = package_name_to_package[package.name].depth + 1
+                deps_found[depname] = package_name_to_package[depname]
                 if args.recurse:
-                    deps_found[package.name].children.append(package_name_to_package[dep])
-                    packages_to_examine.append(dep)
+                    deps_found[package.name].children.append(package_name_to_package[depname])
+                    packages_to_examine.append(depname)
             else:
-                deps_not_found.add(dep)
+                deps_not_found.add(depname)
 
     if deps_not_found:
         print("WARNING: Could not find packages '%s', not recursing" % (', '.join(deps_not_found)))
