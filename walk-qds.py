@@ -95,8 +95,7 @@ def main():
             else:
                 print("WARNING: Could not find quality level for package '%s', skipping" % (package.name))
 
-        for child in package.children:
-            deps_to_print.appendleft(child)
+        deps_to_print.extendleft(package.children)
 
     for s in strings_to_print:
         print(s)
