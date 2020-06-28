@@ -6,33 +6,16 @@ import sys
 
 import lxml.etree
 
-def check_package_xml_for_name(path, name):
-    package_xml = os.path.join(path, 'package.xml')
-    # Open up the package.xml and ensure that this is the correctly named
-    # package, as the path is not unique enough
-    tree = lxml.etree.parse(package_xml)
-    correct_package_name = True
-    for child in tree.getroot().getchildren():
-        if child.tag == 'name':
-            if child.text != name:
-                correct_package_name = False
-        break
 
-    return correct_package_name
-
-
-class Repository:
-    def __init__(self, name, qd_path, package_xml_path, depth):
+class Package:
+    def __init__(self, name, qd_path, lxml_tree):
         self.name = name
         self.qd_path = qd_path
-        self.package_xml_path = package_xml_path
-        self.depth = depth
+        self.lxml_tree = lxml_tree
+        self.depth = 0
 
     def __eq__(self, other):
         return self.name == other
-
-    def __str__(self):
-        return self.name
 
     def __repr__(self):
         return self.name
@@ -51,62 +34,53 @@ def main():
     # First we walk the source repository, finding all of the packages and
     # storing their relative paths.  This saves us from having to do multiple
     # walks of the filesystem later.
-    package_paths = []
+    package_name_to_package = {}
     for (dirpath, dirnames, filenames) in os.walk(source_path):
         if 'package.xml' in filenames:
-            package_paths.append(dirpath)
+            tree = lxml.etree.parse(os.path.join(dirpath, 'package.xml'))
+            for child in tree.getroot().getchildren():
+                if child.tag == 'name':
+                    package_name_to_package[child.text] = Package(child.text, os.path.join(dirpath, 'QUALITY_DECLARATION.md'), tree)
+                    break
 
-    dep_to_qd = []
-    for path in package_paths:
-        if os.path.basename(path) == package_to_examine:
-            if check_package_xml_for_name(path, package_to_examine):
-                dep_to_qd.append(Repository(package_to_examine, os.path.join(path, 'QUALITY_DECLARATION.md'), os.path.join(path, 'package.xml'), 0))
-                break
-    else:
+    if not package_to_examine in package_name_to_package:
         print("Could not find package to examine '%s'" % (package_to_examine))
         return 2
 
-    repos_to_examine = collections.deque([dep_to_qd[0]])
-    all_repos = collections.deque([dep_to_qd[0]])
+    packages_to_examine = collections.deque([package_to_examine])
+    deps_found = [package_to_examine]
     deps_not_found = set()
-    while repos_to_examine:
-        repo_to_examine = repos_to_examine.popleft()
-        tree = lxml.etree.parse(repo_to_examine.package_xml_path)
+    depth = 0
+    while packages_to_examine:
+        package = package_name_to_package[packages_to_examine.popleft()]
         deps = []
-        for child in tree.getroot().getchildren():
+        for child in package.lxml_tree.getroot().getchildren():
             if child.tag in ['depend', 'build_depend']:
                 deps.append(child.text)
 
-        deps.sort()
         for dep in deps:
-            if dep in dep_to_qd:
+            if dep in deps_found:
                 continue
-            for path in package_paths:
-                depname = os.path.basename(path)
-                if depname == dep:
-                    if not check_package_xml_for_name(path, depname):
-                        continue
 
-                    child_repo = Repository(depname, os.path.join(path, 'QUALITY_DECLARATION.md'), os.path.join(path, 'package.xml'), repo_to_examine.depth + 1)
-                    dep_to_qd.append(child_repo)
-                    if args.recurse:
-                        repos_to_examine.appendleft(child_repo)
-                        all_repos.appendleft(child_repo)
-                    break
+            if dep in package_name_to_package:
+                package_name_to_package[dep].depth = package.depth + 1
+                deps_found.append(package_name_to_package[dep].name)
+                if args.recurse:
+                    packages_to_examine.appendleft(dep)
             else:
                 deps_not_found.add(dep)
 
-    print(all_repos)
     if deps_not_found:
         print("WARNING: Could not find packages '%s', not recursing" % (', '.join(deps_not_found)))
 
     quality_level_re = re.compile('.*claims to be in the \*\*Quality Level ([1-5])\*\*')
     dep_to_quality_level = collections.OrderedDict()
-    for qd in dep_to_qd:
-        if not os.path.exists(qd.qd_path):
-            print("WARNING: Could not find quality declaration for package '%s', skipping" % (qd.name))
+    for dep in deps_found:
+        package = package_name_to_package[dep]
+        if not os.path.exists(package.qd_path):
+            print("WARNING: Could not find quality declaration for package '%s', skipping" % (package.name))
             continue
-        with open(qd.qd_path, 'r') as infp:
+        with open(package.qd_path, 'r') as infp:
             for line in infp:
                 match = re.match(quality_level_re, line)
                 if match is None:
@@ -114,7 +88,7 @@ def main():
                 groups = match.groups()
                 if len(groups) != 1:
                     continue
-                dep_to_quality_level[qd.name] = (int(groups[0]), qd.depth)
+                dep_to_quality_level[package.name] = (int(groups[0]), package.depth)
 
     for dep,quality in dep_to_quality_level.items():
         print('%s%s: %d' % ('  ' * quality[1], dep, quality[0]))
