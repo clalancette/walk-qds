@@ -31,9 +31,6 @@ class Package:
         self.depth = 0
         self.children = []
 
-    def __eq__(self, other):
-        return self.name == other.name
-
 
 def main():
     parser = argparse.ArgumentParser()
