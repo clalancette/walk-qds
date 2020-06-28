@@ -41,16 +41,18 @@ class Repository:
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--recurse', help='Whether to recursively find QDs for all dependencies', action='store_true', default=False)
+    parser.add_argument('source_path', help='The top-level of the source tree in which to find package and dependencies', action='store')
     parser.add_argument('package', help='The top-level package for which to find Quality level of dependencies', action='store')
     args = parser.parse_args()
 
+    source_path = args.source_path
     package_to_examine = args.package
 
     # First we walk the source repository, finding all of the packages and
     # storing their relative paths.  This saves us from having to do multiple
     # walks of the filesystem later.
     package_paths = []
-    for (dirpath, dirnames, filenames) in os.walk('src'):
+    for (dirpath, dirnames, filenames) in os.walk(source_path):
         if 'package.xml' in filenames:
             package_paths.append(dirpath)
 
