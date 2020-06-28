@@ -19,12 +19,6 @@ class Package:
         self.qd_path = qd_path
         self.lxml_tree = lxml_tree
 
-    def __eq__(self, other):
-        return self.name == other
-
-    def __repr__(self):
-        return self.name
-
 
 def main():
     parser = argparse.ArgumentParser()
@@ -56,7 +50,6 @@ def main():
     deps_found = collections.OrderedDict()
     deps_found[package_to_examine] = QD(package_name_to_package[package_to_examine], 0)
     deps_not_found = set()
-    depth = 0
     while packages_to_examine:
         package = package_name_to_package[packages_to_examine.popleft()]
         deps = []
