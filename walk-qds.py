@@ -24,6 +24,7 @@ class Package:
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--recurse', help='Whether to recursively find QDs for all dependencies', action='store_true', default=False)
+    parser.add_argument('--exclude', help='Package to specifically exclude from quality-level checking (may be passed more than once)', action='append', default=[])
     parser.add_argument('source_path', help='The top-level of the source tree in which to find package and dependencies', action='store')
     parser.add_argument('package', help='The top-level package for which to find Quality level of dependencies', action='store')
     args = parser.parse_args()
@@ -56,6 +57,9 @@ def main():
 
             depname = child.text
             if depname in depnames_found:
+                continue
+
+            if depname in args.exclude:
                 continue
 
             depnames_found.append(depname)
