@@ -8,7 +8,7 @@ import lxml.etree
 
 
 class Package:
-    __slots__ = ('name', 'qd_path', 'lxml_tree', 'depth', 'children', 'quality_level')
+    __slots__ = ('name', 'qd_path', 'lxml_tree', 'depth', 'children')
 
     def __init__(self, name, qd_path, lxml_tree):
         self.name = name
@@ -16,7 +16,6 @@ class Package:
         self.lxml_tree = lxml_tree
         self.depth = 0
         self.children = []
-        self.quality_level = 5
 
     def __eq__(self, other):
         return self.name == other.name
@@ -32,9 +31,6 @@ def main():
     source_path = args.source_path
     package_name_to_examine = args.package
 
-    # First we walk the source repository, finding all of the packages and
-    # storing their relative paths.  This saves us from having to do multiple
-    # walks of the filesystem later.
     package_name_to_package = {}
     for (dirpath, dirnames, filenames) in os.walk(source_path):
         if 'package.xml' in filenames:
@@ -49,8 +45,7 @@ def main():
         return 2
 
     packages_to_examine = collections.deque([package_name_to_examine])
-    deps_found = collections.OrderedDict()
-    deps_found[package_name_to_examine] = package_name_to_package[package_name_to_examine]
+    depnames_found = [package_name_to_examine]
     deps_not_found = set()
     while packages_to_examine:
         package = package_name_to_package[packages_to_examine.popleft()]
@@ -60,12 +55,15 @@ def main():
                 continue
 
             depname = child.text
+            if depname in depnames_found:
+                continue
+
+            depnames_found.append(depname)
 
             if depname in package_name_to_package:
                 package_name_to_package[depname].depth = package_name_to_package[package.name].depth + 1
-                deps_found[depname] = package_name_to_package[depname]
+                package_name_to_package[package.name].children.append(package_name_to_package[depname])
                 if args.recurse:
-                    deps_found[package.name].children.append(package_name_to_package[depname])
                     packages_to_examine.append(depname)
             else:
                 deps_not_found.add(depname)
@@ -74,7 +72,13 @@ def main():
         print("WARNING: Could not find packages '%s', not recursing" % (', '.join(deps_not_found)))
 
     quality_level_re = re.compile('.*claims to be in the \*\*Quality Level ([1-5])\*\*')
-    for dep,package in deps_found.items():
+
+    # Now start walking in a depth-first search, starting from the top element,
+    # figuring out and printing the quality levels as we go.
+    deps_to_print = collections.deque([package_name_to_package[package_name_to_examine]])
+    strings_to_print = []
+    while deps_to_print:
+        package = deps_to_print.popleft()
         if not os.path.exists(package.qd_path):
             print("WARNING: Could not find quality declaration for package '%s', skipping" % (package.name))
             continue
@@ -86,10 +90,16 @@ def main():
                 groups = match.groups()
                 if len(groups) != 1:
                     continue
-                package.quality_level = int(groups[0])
+                strings_to_print.append('%s%s: %d' % ('  ' * package.depth, package.name, int(groups[0])))
+                break
+            else:
+                print("WARNING: Could not find quality level for package '%s', skipping" % (package.name))
 
-    for dep,package in deps_found.items():
-        print('%s%s: %d' % ('  ' * package.depth, dep, package.quality_level))
+        for child in package.children:
+            deps_to_print.appendleft(child)
+
+    for s in strings_to_print:
+        print(s)
 
     return 0
 
