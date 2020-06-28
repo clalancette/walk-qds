@@ -46,6 +46,14 @@ def main():
     source_path = args.source_path
     package_name_to_examine = args.package
 
+    # Walk the entire source_path passed in by the user, looking for all of the
+    # package.xml files.  For each of them we parse the package.xml, and go
+    # looking for the name of the package.  We then save that off, along with
+    # the parser and the path, so we can later look up the package.  It is
+    # slightly unfortunate that we end up parsing *all* the package.xml files
+    # here, as we will only use a small fraction of them.  But this is the only
+    # foolproof method to get the proper package names.
+
     package_name_to_package = {}
     for (dirpath, dirnames, filenames) in os.walk(source_path):
         if 'package.xml' in filenames:
@@ -58,6 +66,11 @@ def main():
     if not package_name_to_examine in package_name_to_package:
         print("Could not find package to examine '%s'" % (package_name_to_examine))
         return 2
+
+    # Starting with the package given by the user on the command-line, walk the
+    # package dependencies in a breadth-first manner.  We want breadth-first so
+    # that if a dependency shows up on more than one "level", we'll only show it
+    # at the highest level it is a dependency at.
 
     packages_to_examine = collections.deque([package_name_to_examine])
     depnames_found = [package_name_to_examine]
@@ -92,7 +105,9 @@ def main():
     quality_level_re = re.compile('.*claims to be in the \*\*Quality Level ([1-5])\*\*')
 
     # Now start walking in a depth-first search, starting from the top element,
-    # figuring out and printing the quality levels as we go.
+    # figuring out the quality levels as we go.  Note that we don't do the
+    # printing here, just so that we collect all of the WARNINGS before we print
+    # out the entire tree.
     deps_to_print = collections.deque([package_name_to_package[package_name_to_examine]])
     strings_to_print = []
     while deps_to_print:
