@@ -8,12 +8,18 @@ import lxml.etree
 
 
 class QD:
+    __slots__ = ('package', 'depth', 'children', 'quality_level')
+
     def __init__(self, package, depth):
         self.package = package
         self.depth = depth
+        self.children = []
+        self.quality_level = 5
 
 
 class Package:
+    __slots__ = ('name', 'qd_path', 'lxml_tree')
+
     def __init__(self, name, qd_path, lxml_tree):
         self.name = name
         self.qd_path = qd_path
@@ -65,6 +71,7 @@ def main():
                 qd = QD(package_name_to_package[dep], deps_found[package.name].depth + 1)
                 deps_found[dep] = qd
                 if args.recurse:
+                    deps_found[package.name].children.append(qd)
                     packages_to_examine.append(dep)
             else:
                 deps_not_found.add(dep)
@@ -73,7 +80,6 @@ def main():
         print("WARNING: Could not find packages '%s', not recursing" % (', '.join(deps_not_found)))
 
     quality_level_re = re.compile('.*claims to be in the \*\*Quality Level ([1-5])\*\*')
-    dep_to_quality_level = collections.OrderedDict()
     for dep,qd in deps_found.items():
         if not os.path.exists(qd.package.qd_path):
             print("WARNING: Could not find quality declaration for package '%s', skipping" % (package.name))
@@ -86,10 +92,10 @@ def main():
                 groups = match.groups()
                 if len(groups) != 1:
                     continue
-                dep_to_quality_level[qd.package.name] = (int(groups[0]), qd.depth)
+                qd.quality_level = int(groups[0])
 
-    for dep,quality in dep_to_quality_level.items():
-        print('%s%s: %d' % ('  ' * quality[1], dep, quality[0]))
+    for dep,qd in deps_found.items():
+        print('%s%s: %d' % ('  ' * qd.depth, dep, qd.quality_level))
 
     return 0
 
