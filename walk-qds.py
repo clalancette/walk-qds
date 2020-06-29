@@ -35,15 +35,15 @@ class Package:
 
 
 def main():
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(description='Utility to find and print quality levels of a ROS package and dependencies')
     parser.add_argument(
         '--recurse',
-        help='Whether to recursively find QDs for all dependencies',
+        help='Whether to recursively find quality levels for all dependencies',
         action='store_true',
         default=False)
     parser.add_argument(
         '--exclude',
-        help='Package to specifically exclude from quality-level checking (may be passed more than once)',
+        help='Package to specifically exclude from quality level checking (may be passed more than once)',
         action='append',
         default=[])
     parser.add_argument(
