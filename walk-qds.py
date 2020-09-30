@@ -47,6 +47,11 @@ def main():
         action='append',
         default=[])
     parser.add_argument(
+        '--include-build-deps',
+        help='Whether to include build dependencies',
+        action='store_true',
+        default=False)
+    parser.add_argument(
         'source_path',
         help='The top-level of the source tree in which to find package and dependencies',
         action='store')
@@ -62,6 +67,10 @@ def main():
     if package_name_to_examine in args.exclude:
         print("Package name '%s' must not be in the exclude list" % (package_name_to_examine))
         return 1
+
+    dep_tags_to_consider = ['depend', 'exec_depend']
+    if args.include_build_deps:
+        dep_tags_to_consider.append('build_depend')
 
     # Walk the entire source_path passed in by the user, looking for all of the
     # package.xml files.  For each of them we parse the package.xml, and go
@@ -102,7 +111,7 @@ def main():
     while packages_to_examine:
         package = package_name_to_package[packages_to_examine.popleft()]
         for child in package.lxml_tree.getroot().getchildren():
-            if child.tag not in ['depend', 'build_depend']:
+            if child.tag not in dep_tags_to_consider:
                 continue
 
             depname = child.text
