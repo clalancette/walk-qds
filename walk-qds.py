@@ -52,12 +52,12 @@ def main():
         action='store_true',
         default=False)
     parser.add_argument(
-        'source_path',
-        help='The top-level of the source tree in which to find package and dependencies',
+        '--package',
+        help='The top-level package for which to find quality level of dependencies',
         action='store')
     parser.add_argument(
-        'package',
-        help='The top-level package for which to find quality level of dependencies',
+        'source_path',
+        help='The top-level of the source tree in which to find package and dependencies',
         action='store')
     args = parser.parse_args()
 
@@ -96,76 +96,106 @@ def main():
                 tree)
             break
 
-    if package_name_to_examine not in package_name_to_package:
-        print("Could not find package to examine '%s'" % (package_name_to_examine))
-        return 2
-
-    # Starting with the package given by the user on the command-line, walk the
-    # package dependencies in a breadth-first manner.  We want breadth-first so
-    # that if a dependency shows up on more than one "level", we'll only show
-    # it at the highest level it is a dependency at.
-
-    packages_to_examine = collections.deque([package_name_to_examine])
-    depnames_found = [package_name_to_examine]
-    deps_not_found = set()
-    while packages_to_examine:
-        package = package_name_to_package[packages_to_examine.popleft()]
-        for child in package.lxml_tree.getroot().getchildren():
-            if child.tag not in dep_tags_to_consider:
-                continue
-
-            depname = child.text
-            if depname in depnames_found:
-                continue
-
-            if depname in args.exclude:
-                continue
-
-            depnames_found.append(depname)
-
-            if depname in package_name_to_package:
-                package_name_to_package[depname].depth = package.depth + 1
-                package.children.append(package_name_to_package[depname])
-                if args.recurse:
-                    packages_to_examine.append(depname)
-            else:
-                deps_not_found.add(depname)
-
-    if deps_not_found:
-        print("WARNING: Could not find dependencies '%s', skipping" % (', '.join(deps_not_found)))
-
     quality_level_re = re.compile(r'.*claims to be in the \*\*Quality Level ([1-5])\*\*')
 
-    # Now start walking in a depth-first search, starting from the top element,
-    # figuring out the quality levels as we go.  Note that we don't do the
-    # printing here, just so that we collect all of the WARNINGS before we
-    # print out the entire tree.
-    deps_to_print = collections.deque([package_name_to_package[package_name_to_examine]])
-    strings_to_print = []
-    while deps_to_print:
-        package = deps_to_print.popleft()
-        if not os.path.exists(package.qd_path):
-            print("WARNING: Could not find quality declaration for package '%s', skipping" % (package.name))
-            continue
-        with open(package.qd_path, 'r') as infp:
-            for line in infp:
-                match = re.match(quality_level_re, line)
-                if match is None:
-                    continue
-                groups = match.groups()
-                if len(groups) != 1:
-                    continue
-                strings_to_print.append('%s%s: %d' % ('  ' * package.depth, package.name, int(groups[0])))
-                break
-            else:
-                print("WARNING: Could not find quality level for package '%s', skipping" % (package.name))
+    # Were we asked to research a particlar package?
+    if package_name_to_examine:
+        if package_name_to_examine not in package_name_to_package:
+            print("Could not find package to examine '%s'" % (package_name_to_examine))
+            return 2
 
-        deps_to_print.extendleft(package.children)
+        # Starting with the package given by the user on the command-line, walk the
+        # package dependencies in a breadth-first manner.  We want breadth-first so
+        # that if a dependency shows up on more than one "level", we'll only show
+        # it at the highest level it is a dependency at.
 
-    [print(s) for s in strings_to_print]
+        packages_to_examine = collections.deque([package_name_to_examine])
+        depnames_found = [package_name_to_examine]
+        deps_not_found = set()
+        while packages_to_examine:
+            package = package_name_to_package[packages_to_examine.popleft()]
+            for child in package.lxml_tree.getroot().getchildren():
+                if child.tag not in dep_tags_to_consider:
+                    continue
+
+                depname = child.text
+                if depname in depnames_found:
+                    continue
+
+                if depname in args.exclude:
+                    continue
+
+                depnames_found.append(depname)
+
+                if depname in package_name_to_package:
+                    package_name_to_package[depname].depth = package.depth + 1
+                    package.children.append(package_name_to_package[depname])
+                    if args.recurse:
+                        packages_to_examine.append(depname)
+                else:
+                    deps_not_found.add(depname)
+
+        if deps_not_found:
+            print("WARNING: Could not find dependencies '%s', skipping" % (', '.join(deps_not_found)))
+
+        # Now start walking in a depth-first search, starting from the top element,
+        # figuring out the quality levels as we go.  Note that we don't do the
+        # printing here, just so that we collect all of the WARNINGS before we
+        # print out the entire tree.
+        deps_to_print = collections.deque([package_name_to_package[package_name_to_examine]])
+        strings_to_print = []
+        while deps_to_print:
+            package = deps_to_print.popleft()
+            if not os.path.exists(package.qd_path):
+                print("WARNING: Could not find quality declaration for package '%s', skipping" % (package.name))
+                continue
+            with open(package.qd_path, 'r') as infp:
+                for line in infp:
+                    match = re.match(quality_level_re, line)
+                    if match is None:
+                        continue
+                    groups = match.groups()
+                    if len(groups) != 1:
+                        continue
+                    strings_to_print.append('%s%s: %d' % ('  ' * package.depth, package.name, int(groups[0])))
+                    break
+                else:
+                    print("WARNING: Could not find quality level for package '%s', skipping" % (package.name))
+
+            deps_to_print.extendleft(package.children)
+
+        [print(s) for s in strings_to_print]
+
+    # Or was no package name given, in which case we'll just print total
+    # counts by quality level?
+    else:
+        ql_totals = {}
+        for package in package_name_to_package.values():
+            if not os.path.exists(package.qd_path):
+                print("WARNING: Could not find quality declaration for package '%s', skipping" % (package.name))
+                continue
+            with open(package.qd_path, 'r') as infp:
+                for line in infp:
+                    match = re.match(quality_level_re, line)
+                    if match is None:
+                        continue
+                    groups = match.groups()
+                    if len(groups) != 1:
+                        continue
+                    ql = int(groups[0])
+                    if ql in ql_totals:
+                        ql_totals[ql] += 1
+                    else:
+                        ql_totals[ql] = 1
+                    break
+                else:
+                    print("WARNING: Could not find quality level for package '%s', skipping" % (package.name))
+
+        print("# Package counts by quality level:")
+        for level in sorted(ql_totals.keys()):
+            print("%d : %d" % (level, ql_totals[level]))
 
     return 0
-
 
 if __name__ == '__main__':
     sys.exit(main())
