@@ -51,10 +51,16 @@ def main():
         help='Whether to include build dependencies',
         action='store_true',
         default=False)
-    parser.add_argument(
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument(
         '--package',
         help='The top-level package for which to find quality level of dependencies',
         action='store')
+    group.add_argument(
+        '--count',
+        help='Count the number of packages in each quality level (cannot be combined with --package)',
+        action='store_true',
+        default=False)
     parser.add_argument(
         'source_path',
         help='The top-level of the source tree in which to find package and dependencies',
@@ -168,7 +174,7 @@ def main():
 
     # Or was no package name given, in which case we'll just print total
     # counts by quality level?
-    else:
+    elif args.count:
         ql_totals = {}
         for package in package_name_to_package.values():
             if not os.path.exists(package.qd_path):
